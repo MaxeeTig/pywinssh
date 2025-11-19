@@ -47,6 +47,9 @@ class TerminalWidget(QPlainTextEdit):
         self.setUndoRedoEnabled(False)
         self.setMaximumBlockCount(10000)  # Limit history
         
+        # Set black background for terminal look
+        self.setStyleSheet("QPlainTextEdit { background-color: #000000; color: #e5e5e5; }")
+        
         # Terminal state
         self._current_format = QTextCharFormat()
         self._current_format.setForeground(QColor(229, 229, 229))  # Default white text
