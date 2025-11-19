@@ -106,40 +106,66 @@ class TerminalWidget(QPlainTextEdit):
         i = 0
         
         while i < len(text):
+            # Check for ANSI escape sequence (\x1b[)
             if text[i] == '\x1b' and i + 1 < len(text) and text[i + 1] == '[':
                 # Found ANSI escape sequence
                 j = i + 2
-                while j < len(text) and text[j] not in 'HfABCDEFGHJKSTm':
+                # Find the end of the escape sequence (command character)
+                # Common ANSI command characters: m (formatting), H (cursor position), 
+                # K (erase), J (erase), A-D (cursor movement), etc.
+                while j < len(text) and text[j] not in 'HfABCDEFGHJKSTm@':
                     j += 1
                 
-                if j < len(text) and text[j] == 'm':
-                    # Color code
+                if j < len(text):
+                    command = text[j]
                     code_str = text[i + 2:j]
-                    codes = code_str.split(';')
                     
-                    for code in codes:
-                        if code == '0' or code == '':
-                            parts.append({'reset': True})
-                        elif code in self.ANSI_COLORS:
-                            parts.append({'fg': self.ANSI_COLORS[code]})
-                        elif code.startswith('3') and len(code) == 2:
-                            # Foreground color
-                            color_code = code[1]
-                            if color_code in self.ANSI_COLORS:
-                                parts.append({'fg': self.ANSI_COLORS[color_code]})
-                        elif code.startswith('4') and len(code) == 2:
-                            # Background color
-                            color_code = code[1]
-                            if color_code in self.ANSI_COLORS:
-                                parts.append({'bg': self.ANSI_COLORS[color_code]})
-                
-                i = j + 1
+                    if command == 'm':
+                        # Color/formatting code
+                        codes = code_str.split(';')
+                        
+                        for code in codes:
+                            if code == '0' or code == '':
+                                parts.append({'reset': True})
+                            elif code in self.ANSI_COLORS:
+                                parts.append({'fg': self.ANSI_COLORS[code]})
+                            elif code.startswith('3') and len(code) == 2:
+                                # Foreground color
+                                color_code = code[1]
+                                if color_code in self.ANSI_COLORS:
+                                    parts.append({'fg': self.ANSI_COLORS[color_code]})
+                            elif code.startswith('4') and len(code) == 2:
+                                # Background color
+                                color_code = code[1]
+                                if color_code in self.ANSI_COLORS:
+                                    parts.append({'bg': self.ANSI_COLORS[color_code]})
+                    # For other ANSI sequences (cursor positioning, clearing, etc.), skip them
+                    # They don't produce visible output but are control sequences
+                    
+                    i = j + 1
+                else:
+                    # Incomplete escape sequence, skip it
+                    i += 1
+            # Check for other control characters that shouldn't be displayed
+            elif ord(text[i]) < 32 and text[i] not in '\n\r\t':
+                # Skip control characters except newline, carriage return, and tab
+                i += 1
             else:
                 # Regular text
                 start = i
-                while i < len(text) and not (text[i] == '\x1b' and i + 1 < len(text) and text[i + 1] == '['):
+                while i < len(text):
+                    # Stop at ANSI escape sequence start
+                    if text[i] == '\x1b' and i + 1 < len(text) and text[i + 1] == '[':
+                        break
+                    # Stop at control characters (except newline, carriage return, tab)
+                    if ord(text[i]) < 32 and text[i] not in '\n\r\t':
+                        break
                     i += 1
-                parts.append(text[start:i])
+                if start < i:
+                    parts.append(text[start:i])
+                if i < len(text) and ord(text[i]) < 32 and text[i] not in '\n\r\t':
+                    # Skip control character
+                    i += 1
         
         return parts
     
@@ -158,27 +184,14 @@ class TerminalWidget(QPlainTextEdit):
         
         # Handle Enter key
         if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
-            cursor = self.textCursor()
-            # Get current line text
-            cursor.select(cursor.LineUnderCursor)
-            line_text = cursor.selectedText()
-            cursor.clearSelection()
-            
-            # Send to SSH (including newline)
-            self.data_to_send.emit((line_text + '\r\n').encode('utf-8'))
-            
-            # Move cursor to end and insert newline
-            cursor.movePosition(cursor.End)
-            cursor.insertText('\n')
-            self.setTextCursor(cursor)
+            # Send newline to SSH - server will echo it back
+            self.data_to_send.emit(b'\r\n')
             return
         
         # Handle Backspace
         if event.key() == Qt.Key_Backspace:
-            cursor = self.textCursor()
-            if cursor.position() > self._input_start_pos:
-                cursor.deletePreviousChar()
-                self.setTextCursor(cursor)
+            # Send backspace to SSH - server will handle the deletion
+            self.data_to_send.emit(b'\x08')  # Backspace character
             return
         
         # Handle other special keys
@@ -189,13 +202,9 @@ class TerminalWidget(QPlainTextEdit):
             return
         
         # Send printable characters to SSH
+        # Don't insert locally - let the SSH server echo it back
         if event.text():
-            # Insert character locally
-            cursor = self.textCursor()
-            cursor.insertText(event.text())
-            self.setTextCursor(cursor)
-            
-            # Send to SSH
+            # Send to SSH - server will echo it back
             self.data_to_send.emit(event.text().encode('utf-8'))
             return
         
@@ -206,13 +215,7 @@ class TerminalWidget(QPlainTextEdit):
         """Paste text from clipboard"""
         if Clipboard.has_text():
             text = Clipboard.paste_text()
-            cursor = self.textCursor()
-            
-            # Insert text
-            cursor.insertText(text)
-            self.setTextCursor(cursor)
-            
-            # Send to SSH
+            # Send to SSH - server will echo it back
             self.data_to_send.emit(text.encode('utf-8'))
     
     def contextMenuEvent(self, event):
