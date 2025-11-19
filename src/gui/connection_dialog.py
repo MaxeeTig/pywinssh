@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
     QLabel, QFileDialog, QMessageBox, QDialogButtonBox
 )
 from PyQt5.QtCore import Qt
+from ..utils.settings import SettingsManager
 
 
 class ConnectionDialog(QDialog):
@@ -26,7 +27,11 @@ class ConnectionDialog(QDialog):
         self.key_filename = None
         self.save_settings = False
         
+        # Settings manager
+        self.settings_manager = SettingsManager()
+        
         self._setup_ui()
+        self._load_saved_settings()
     
     def _setup_ui(self):
         """Setup UI components"""
@@ -99,6 +104,19 @@ class ConnectionDialog(QDialog):
         if filename:
             self.key_edit.setText(filename)
     
+    def _load_saved_settings(self):
+        """Load saved connection settings and populate form fields"""
+        saved_settings = self.settings_manager.load_connection_settings()
+        if saved_settings:
+            self.hostname_edit.setText(saved_settings.get("hostname", ""))
+            self.port_spinbox.setValue(saved_settings.get("port", 22))
+            self.username_edit.setText(saved_settings.get("username", ""))
+            key_filename = saved_settings.get("key_filename")
+            if key_filename:
+                self.key_edit.setText(key_filename)
+            # Check the save checkbox if settings were loaded
+            self.save_checkbox.setChecked(True)
+    
     def _validate_and_accept(self):
         """Validate inputs and accept dialog"""
         hostname = self.hostname_edit.text().strip()
@@ -130,6 +148,17 @@ class ConnectionDialog(QDialog):
         self.password = password if password else None
         self.key_filename = key_filename if key_filename else None
         self.save_settings = self.save_checkbox.isChecked()
+        
+        # Save or clear settings based on checkbox state
+        if self.save_settings:
+            self.settings_manager.save_connection_settings(
+                hostname=hostname,
+                port=self.port,
+                username=username,
+                key_filename=key_filename if key_filename else None
+            )
+        else:
+            self.settings_manager.clear_connection_settings()
         
         self.accept()
     

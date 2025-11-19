@@ -15,14 +15,14 @@ logging.basicConfig(
 
 def main():
     """Main application entry point"""
+    # Enable high DPI scaling (must be set before QApplication is created)
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
     # Create QApplication
     app = QApplication(sys.argv)
     app.setApplicationName("PyWinSSH")
     app.setOrganizationName("PyWinSSH")
-    
-    # Enable high DPI scaling
-    app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
     # Create and show main window
     window = MainWindow()

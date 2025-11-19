@@ -3,7 +3,7 @@
 import logging
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QMenuBar, QMenu,
-    QToolBar, QAction, QStatusBar, QMessageBox, QApplication
+    QToolBar, QAction, QStatusBar, QMessageBox, QApplication, QDialog
 )
 from PyQt5.QtCore import Qt, pyqtSlot
 from PyQt5.QtGui import QIcon, QKeySequence
