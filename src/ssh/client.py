@@ -4,6 +4,7 @@ import paramiko
 import socket
 from typing import Optional, Tuple
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,56 @@ class SSHClient:
         self._hostname = None
         self._port = 22
         self._username = None
+    
+    def _load_private_key(self, key_filename: str):
+        """
+        Load private key from file with better error handling
+        
+        Args:
+            key_filename: Path to private key file
+            
+        Returns:
+            Loaded private key object
+            
+        Raises:
+            ValueError: If key file cannot be loaded or is invalid
+        """
+        if not os.path.exists(key_filename):
+            raise ValueError(f"Private key file not found: {key_filename}")
+        
+        # Try different key types in order of preference
+        key_classes = [
+            (paramiko.RSAKey, 'RSA'),
+            (paramiko.Ed25519Key, 'Ed25519'),
+            (paramiko.ECDSAKey, 'ECDSA'),
+            (paramiko.DSSKey, 'DSA'),
+        ]
+        
+        for key_class, key_type in key_classes:
+            try:
+                logger.debug(f"Attempting to load {key_type} key from {key_filename}")
+                key = key_class.from_private_key_file(key_filename)
+                logger.info(f"Successfully loaded {key_type} key from {key_filename}")
+                return key
+            except paramiko.ssh_exception.SSHException:
+                # Wrong key type, try next
+                continue
+            except Exception as e:
+                # If it's a DSA key with validation error, provide helpful message
+                if key_type == 'DSA' and 'q must be exactly' in str(e):
+                    raise ValueError(
+                        f"DSA key validation failed: {e}\n"
+                        f"DSA keys with non-standard parameters are not supported.\n"
+                        f"Please use RSA, ECDSA, or Ed25519 keys instead."
+                    ) from e
+                # For other errors, continue trying other key types
+                continue
+        
+        # If we get here, none of the key types worked
+        raise ValueError(
+            f"Could not load private key from {key_filename}.\n"
+            f"Supported formats: RSA, Ed25519, ECDSA, DSA (with standard parameters)."
+        )
     
     def connect(
         self,
@@ -58,7 +109,14 @@ class SSHClient:
                 connect_params['password'] = password
             
             if key_filename:
-                connect_params['key_filename'] = key_filename
+                # Explicitly load the key first to get better error messages
+                try:
+                    private_key = self._load_private_key(key_filename)
+                    connect_params['pkey'] = private_key
+                except ValueError as e:
+                    logger.error(f"Failed to load private key: {e}")
+                    raise paramiko.AuthenticationException(f"Invalid private key: {e}") from e
+                
                 connect_params['look_for_keys'] = False
                 connect_params['allow_agent'] = False
             
